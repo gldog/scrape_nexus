@@ -33,7 +33,7 @@ set -e
 #
 # Nexus-base-URL. Defaults to a local test instance http://localhost:8081.
 # F.y.i., the context-path is configured in sonatype-work/nexus3/etc/nexus.properties. The default is "/".
-[[ -z $NEXUS_BASE_URL ]] && NEXUS_BASE_URL="http://localhost:8081"
+[[ -z "$NEXUS_BASE_URL" ]] && NEXUS_BASE_URL="http://localhost:8081"
 # Strip off trailing slash if present.
 # Shell-check:
 #   Recommended "See if you can use ${variable//search/replace} instead. See SC2001".
@@ -42,14 +42,14 @@ set -e
 NEXUS_BASE_URL=$(echo $NEXUS_BASE_URL | sed 's#/*$##')
 
 # Abs. path to Nexus logfile, defaults to /opt/nexus/sonatype-work/nexus3/log/nexus.log.
-[[ -z $NEXUS_LOGFILE_PATH ]] && NEXUS_LOGFILE_PATH="/opt/nexus/sonatype-work/nexus3/log/nexus.log"
+[[ -z "$NEXUS_LOGFILE_PATH" ]] && NEXUS_LOGFILE_PATH="/opt/nexus/sonatype-work/nexus3/log/nexus.log"
 
-[[ -z $NEXUS_TMP_PATH ]] && NEXUS_TMP_PATH="/opt/nexus/sonatype-work/nexus3/tmp"
+[[ -z "$NEXUS_TMP_PATH" ]] && NEXUS_TMP_PATH="/opt/nexus/sonatype-work/nexus3/tmp"
 
 # Abs. path to the directory the PROM-metrics shall be saved to.
 # Note, the files shared with node_exporter have to be readable by the user running node_exporter (the standard user
 # for this is 'prometheus').
-[[ -z $PROM_FILES_DIR ]] && PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
+[[ -z "$PROM_FILES_DIR" ]] && PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
 
 # Log with common format.
 # Note, starting the script with nohup later on redirects stdout and stderr to the given logfile.
@@ -152,47 +152,21 @@ function scrape_nexus_prometheus_url() {
 function nexus_log_warn_and_error_count_to_prom() {
 
   if [[ -f $NEXUS_LOGFILE_PATH ]]; then
+    {
+      echo "# HELP sonatype_nexus_num_warn_lines_in_nexus_log_total Number of WARN lines in nexus.log."
+      echo "# TYPE sonatype_nexus_num_warn_lines_in_nexus_log_total counter"
+      echo "sonatype_nexus_num_warn_lines_in_nexus_log_total $(grep -cE " WARN " "$NEXUS_LOGFILE_PATH")"
+    } >>"${PROM_FILE}.$$"
 
-    cat <<EOF >>"${PROM_FILE}.$$"
-# HELP sonatype_nexus_num_warn_lines_in_nexus_log_total Number of WARN lines in nexus.log.
-# TYPE sonatype_nexus_num_warn_lines_in_nexus_log_total counter
-sonatype_nexus_num_warn_lines_in_nexus_log_total $(grep -cE " WARN " "$NEXUS_LOGFILE_PATH")
-EOF
-
-    cat <<EOF >>"${PROM_FILE}.$$"
-# HELP sonatype_nexus_num_error_lines_in_nexus_log_total Number of ERROR lines in nexus.log.
-# TYPE sonatype_nexus_num_error_lines_in_nexus_log_total counter
-sonatype_nexus_num_error_lines_in_nexus_log_total $(grep -cE " ERROR " "$NEXUS_LOGFILE_PATH")
-EOF
-
+    {
+      echo "# HELP sonatype_nexus_num_error_lines_in_nexus_log_total Number of ERROR lines in nexus.log."
+      echo "# TYPE sonatype_nexus_num_error_lines_in_nexus_log_total counter"
+      echo "sonatype_nexus_num_error_lines_in_nexus_log_total $(grep -cE " ERROR " "$NEXUS_LOGFILE_PATH")"
+    } >>"${PROM_FILE}.$$"
   fi
 }
 
 function nexus_log_orientdb_profiler_output_to_prom() {
-
-  # The lines of interest can be found by the following pattern. It is printed from the OAbstractProfiler. This class is
-  # part of the OrientDB code, not the Nexus code.
-  # In OrientDB https://github.com/orientechnologies/orientdb/blob/develop/core/src/main/java/com/orientechnologies/common/profiler/OAbstractProfiler.java:
-  #     "To improve performance set maxHeap to %dMB and DISKCACHE to %dMB"
-  pattern="OAbstractProfiler.+To improve performance set maxHeap to"
-
-  # Prepare Prometheus metric text for max. heap size.
-  max_heap_metric=$(
-    cat <<'EOF'
-# HELP sonatype_nexus_recommended_maximum_jvm_heap_megabytes Recommendation for the JVM heap size in MB read from nexus.log.
-# TYPE sonatype_nexus_recommended_maximum_jvm_heap_megabytes gauge
-sonatype_nexus_recommended_maximum_jvm_heap_megabytes
-EOF
-  )
-
-  # Prepare Prometheus metric text for direct memory size.
-  max_direct_metric=$(
-    cat <<'EOF'
-# HELP sonatype_nexus_recommended_maximum_direct_memory_megabytes Recommendation for the maximum direct memory size in MB read from nexus.log.
-# TYPE sonatype_nexus_recommended_maximum_direct_memory_megabytes gauge
-sonatype_nexus_recommended_maximum_direct_memory_megabytes
-EOF
-  )
 
   # Build both Prometheus metrics and print them to the temporary PROM-file already created.
   # tac starts reading the logfile from the end. This is to get the latest recommended values.
@@ -203,36 +177,63 @@ EOF
   # Then awk assembles the prepared texts and the recommended values. It prints the values 2652MB and 3036MB as integers
   # to strip off the "MB".
   if [[ -f $NEXUS_LOGFILE_PATH ]]; then
-    if grep -E -q "$pattern" "$NEXUS_LOGFILE_PATH"; then
+
+    # Prepare Prometheus metric text for max. heap size.
+    max_heap_metric="# HELP sonatype_nexus_recommended_maximum_jvm_heap_megabytes"
+    max_heap_metric+=" Recommendation for the JVM heap size in MB read from nexus.log.\n"
+    max_heap_metric+="# TYPE sonatype_nexus_recommended_maximum_jvm_heap_megabytes gauge\n"
+    max_heap_metric+="sonatype_nexus_recommended_maximum_jvm_heap_megabytes"
+
+    # Prepare Prometheus metric text for direct memory size.
+    max_direct_metric="# HELP sonatype_nexus_recommended_maximum_direct_memory_megabytes"
+    max_direct_metric+=" Recommendation for the maximum direct memory size in MB read from nexus.log.\n"
+    max_direct_metric+="# TYPE sonatype_nexus_recommended_maximum_direct_memory_megabytes gauge\n"
+    max_direct_metric+="sonatype_nexus_recommended_maximum_direct_memory_megabytes"
+
+    # Make the newlines effective in awk. Without this, awk prints them as literal '\n'.
+    # The format '%b' really prints the newline ('%s' would print the literal '\n').
+    max_heap_metric=$(printf "%b" "$max_heap_metric")
+    max_direct_metric=$(printf "%b" "$max_direct_metric")
+
+    # The lines of interest can be found by the following pattern. It is printed from the OAbstractProfiler. This class
+    # is part of the OrientDB code, not the Nexus code.
+    # In OrientDB https://github.com/orientechnologies/orientdb/blob/develop/core/src/main/java/com/orientechnologies/common/profiler/OAbstractProfiler.java:
+    #     "To improve performance set maxHeap to %dMB and DISKCACHE to %dMB"
+    pattern="OAbstractProfiler.+To improve performance set maxHeap to"
+    last_matching_line=$(tac "$NEXUS_LOGFILE_PATH" | grep -m 1 -E "$pattern")
+    if [[ -n "$last_matching_line" ]]; then
 
       # This is a version using -v to define awk-vars. But it doesn't run on MacOS. It is moaning:
       #   awk: newline in string # HELP recommended_m... at source line 1
       #
-      #tac -s "$pattern" -r "$nexus_log" | head -n 1 |
+      #tac -s "$pattern" -r "$NEXUS_LOGFILE_PATH" | head -n 1 |
       #  awk -v max_heap_metric="$max_heap_metric" -v max_direct_metric="$max_direct_metric" \
-      #    '{printf "%s %d\n%s %d\n", max_heap_metric, $1, max_direct_metric, $5; }'
+      #    '{printf "%s %d\n%s %d\n", max_heap_metric, $1, max_direct_metric, $5; }'>>"${PROM_FILE}.$$"
 
       # This is a portable version.
       # The delete ARGV is to prevent awk treating the ARGs as argument-filenames.
-      tac -s "$pattern" -r "$NEXUS_LOGFILE_PATH" | head -n 1 |
+      # A matching line ends with the following sentence (with header showing negative indexes):
+      #                                                 -4  -3        -2 -1      0
+      #   ... To improve performance set maxHeap to 2652MB and DISKCACHE to 3036MB
+      # awk can print fields counting from right to left using the awk-variable NF (number of fields in current row).
+      # To print the '3036MB', the $NF is used, and to print the '2652MB' the $(NF-4) ist used.
+      echo "$last_matching_line" |
         awk 'BEGIN {max_heap_metric=ARGV[1]; max_direct_metric=ARGV[2]; delete ARGV[1]; delete ARGV[2]}
-          {printf "%s %d\n%s %d\n", max_heap_metric, $1, max_direct_metric, $5; }' \
+          {printf "%s %d\n%s %d\n", max_heap_metric, $(NF-4), max_direct_metric, $NF }' \
           "$max_heap_metric" "$max_direct_metric" >>"${PROM_FILE}.$$"
     else
-      # Set recommended values to 0 signalling the log-scrape is alive if no profiler-recommendations has been found.
-      echo -e "$max_heap_metric 0\n" >>"${PROM_FILE}.$$"
-      echo -e "$max_direct_metric 0\n" >>"${PROM_FILE}.$$"
+      # Set recommended values to 0 signalling the log-scrape is alive but no profiler-recommendations has been found.
+      printf "%b 0\n%b 0\n" "$max_heap_metric" "$max_direct_metric" >>"${PROM_FILE}.$$"
     fi
     # Without logfile no recommendations are written to signal the absent logfile.
   fi
 }
 
 function blobstore_and_repo_sizes_to_prom() {
-  #set -x
 
   blobstore_and_repo_sizes_jsonfile=$(find $NEXUS_TMP_PATH -name "repoSizes-*" | tail -1)
-  # Can't write PROM metric without the JSON file.
   if [[ ! -f "$blobstore_and_repo_sizes_jsonfile" ]]; then
+    # Can't write PROM metric without the JSON file.
     return
   fi
 
@@ -253,62 +254,58 @@ function blobstore_and_repo_sizes_to_prom() {
   reclaimableBytes_prom="# HELP sonatype_nexus_repoSizes_repo_reclaimableBytes\n"
   reclaimableBytes_prom+="# TYPE sonatype_nexus_repoSizes_repo_reclaimableBytes gauge\n"
 
-  if [[ -f "$blobstore_and_repo_sizes_jsonfile" ]]; then
-    # By using jq --compact-output (or -c) we can get each object on a newline.
-    # jq is robust against an completely empty file.
-    for blobstore_obj in $(jq -c '. | to_entries | .[]' "$blobstore_and_repo_sizes_jsonfile"); do
-      is_any_metric=true
-      # jq -r (raw) prints the blobstore-names without surrounding quotes..
-      blobstore_name=$(echo $blobstore_obj | jq -r '.key')
-      #echo "BS-NAME: $blobstore_name"
-      # Blobstore: totalBlobStoreBytes
-      totalBlobStoreBytes=$(echo $blobstore_obj | jq '.value.totalBlobStoreBytes')
-      totalBlobStoreBytes_prom+="sonatype_nexus_repoSizes_blobstore_totalBlobStoreBytes"
-      totalBlobStoreBytes_prom+="{blobstore=\"$blobstore_name\"} $totalBlobStoreBytes\n"
-      # Blobstore: totalReclaimableBytes
-      totalReclaimableBytes=$(echo $blobstore_obj | jq '.value.totalReclaimableBytes')
-      totalReclaimableBytes_prom+="sonatype_nexus_repoSizes_blobstore_totalReclaimableBytes"
-      totalReclaimableBytes_prom+="{blobstore=\"$blobstore_name\"} $totalReclaimableBytes\n"
-      # Blobstore: totalRepoNameMissingCount
-      totalRepoNameMissingCount=$(echo $blobstore_obj | jq '.value.totalRepoNameMissingCount')
-      totalRepoNameMissingCount_prom+="sonatype_nexus_repoSizes_blobstore_totalRepoNameMissingCount"
-      totalRepoNameMissingCount_prom+="{blobstore=\"$blobstore_name\"} $totalRepoNameMissingCount\n"
-      for repo_obj in $(echo "$blobstore_obj" | jq -c '.value.repositories | to_entries | .[]'); do
-        #echo "REPO-OBJ: $repo_obj"
-        repo_name=$(echo "$repo_obj" | jq -r '.key')
-        totalBytes=$(echo "$repo_obj" | jq -r '.value.totalBytes')
-        reclaimableBytes=$(echo "$repo_obj" | jq -r '.value.reclaimableBytes')
-        # Repo: totalBytes
-        totalBytes_prom+="sonatype_nexus_repoSizes_repo_totalBytes"
-        totalBytes_prom+="{blobstore=\"$blobstore_name\",repo=\"$repo_name\"} $totalBytes\n"
-        # Repo: reclaimableBytes
-        reclaimableBytes_prom+="sonatype_nexus_repoSizes_repo_reclaimableBytes"
-        reclaimableBytes_prom+="{blobstore=\"$blobstore_name\",repo=\"$repo_name\"} $reclaimableBytes\n"
-      done
-
+  # By using jq --compact-output (or -c) we can get each object on a newline.
+  # jq is robust against an completely empty file.
+  for blobstore_obj in $(jq -c '. | to_entries | .[]' "$blobstore_and_repo_sizes_jsonfile"); do
+    is_any_metric=true
+    # jq -r (raw) prints the blobstore-names without surrounding quotes..
+    blobstore_name=$(echo $blobstore_obj | jq -r '.key')
+    # Blobstore: totalBlobStoreBytes
+    totalBlobStoreBytes=$(echo $blobstore_obj | jq '.value.totalBlobStoreBytes')
+    totalBlobStoreBytes_prom+="sonatype_nexus_repoSizes_blobstore_totalBlobStoreBytes"
+    totalBlobStoreBytes_prom+="{blobstore=\"$blobstore_name\"} $totalBlobStoreBytes\n"
+    # Blobstore: totalReclaimableBytes
+    totalReclaimableBytes=$(echo $blobstore_obj | jq '.value.totalReclaimableBytes')
+    totalReclaimableBytes_prom+="sonatype_nexus_repoSizes_blobstore_totalReclaimableBytes"
+    totalReclaimableBytes_prom+="{blobstore=\"$blobstore_name\"} $totalReclaimableBytes\n"
+    # Blobstore: totalRepoNameMissingCount
+    totalRepoNameMissingCount=$(echo $blobstore_obj | jq '.value.totalRepoNameMissingCount')
+    totalRepoNameMissingCount_prom+="sonatype_nexus_repoSizes_blobstore_totalRepoNameMissingCount"
+    totalRepoNameMissingCount_prom+="{blobstore=\"$blobstore_name\"} $totalRepoNameMissingCount\n"
+    for repo_obj in $(echo "$blobstore_obj" | jq -c '.value.repositories | to_entries | .[]'); do
+      repo_name=$(echo "$repo_obj" | jq -r '.key')
+      totalBytes=$(echo "$repo_obj" | jq -r '.value.totalBytes')
+      reclaimableBytes=$(echo "$repo_obj" | jq -r '.value.reclaimableBytes')
+      # Repo: totalBytes
+      totalBytes_prom+="sonatype_nexus_repoSizes_repo_totalBytes"
+      totalBytes_prom+="{blobstore=\"$blobstore_name\",repo=\"$repo_name\"} $totalBytes\n"
+      # Repo: reclaimableBytes
+      reclaimableBytes_prom+="sonatype_nexus_repoSizes_repo_reclaimableBytes"
+      reclaimableBytes_prom+="{blobstore=\"$blobstore_name\",repo=\"$repo_name\"} $reclaimableBytes\n"
     done
+  done
 
-    [[ "$is_any_metric" = true ]] &&
-      printf "%b%b%b%b%b" \
-        "$totalBlobStoreBytes_prom" "$totalReclaimableBytes_prom" "$totalRepoNameMissingCount_prom" \
-        "$totalBytes_prom" "$reclaimableBytes_prom" \
-        >>"${PROM_FILE}.$$"
-  fi
+  [[ "$is_any_metric" = true ]] &&
+    printf "%b%b%b%b%b" \
+      "$totalBlobStoreBytes_prom" "$totalReclaimableBytes_prom" "$totalRepoNameMissingCount_prom" \
+      "$totalBytes_prom" "$reclaimableBytes_prom" \
+      >>"${PROM_FILE}.$$"
+
 }
 
+# Provide the PROM-file atomically.
 function rename_prom() {
-  # Provide the PROM-file atomically.
   mv "${PROM_FILE}.$$" "$PROM_FILE"
 }
 
 function run() {
 
-  set -u
+  set -u # Abort with error on unset variable.
   log "Start scraping. Settings: NEXUS_BASE_URL: $NEXUS_BASE_URL, NEXUS_LOGFILE_PATH: $NEXUS_LOGFILE_PATH" \
     ", PROM_FILES_DIR: $PROM_FILES_DIR"
 
   # If the umask would be a typical default of 0027, the user reading these files (usually 'prometheus' running the
-  # node_exporter) could have no read-access.
+  # node_exporter) could got into no read-access.
   umask 0022
 
   while true; do
@@ -333,4 +330,3 @@ if [[ -z "$IS_SCRIPT_USED_AS_LIB_FOR_TESTING" ]]; then
     run
   fi
 fi
-
