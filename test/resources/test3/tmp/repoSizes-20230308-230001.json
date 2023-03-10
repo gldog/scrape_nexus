@@ -1,0 +1,32 @@
+{
+    "default": {
+        "repositories": {
+            "bs-default-repo-1": {
+                "reclaimableBytes": 11,
+                "totalBytes": 12
+            },
+            "bs-default-repo-2": {
+                "reclaimableBytes": 13,
+                "totalBytes": 14
+            }
+        },
+        "totalBlobStoreBytes": 101,
+        "totalReclaimableBytes": 102,
+        "totalRepoNameMissingCount": 103
+    },
+    "blobstore2": {
+        "repositories": {
+            "bs-blobstore2-repo-1": {
+                "reclaimableBytes": 21,
+                "totalBytes": 22
+            },
+            "bs-blobstore2-repo-2": {
+                "reclaimableBytes": 23,
+                "totalBytes": 24
+            }
+        },
+        "totalBlobStoreBytes": 201,
+        "totalReclaimableBytes": 202,
+        "totalRepoNameMissingCount": 203
+    }
+}
