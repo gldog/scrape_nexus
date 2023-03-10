@@ -31,25 +31,25 @@ set -e
 #
 # Environment vars set from extern.
 #
+set +u
 # Nexus-base-URL. Defaults to a local test instance http://localhost:8081.
 # F.y.i., the context-path is configured in sonatype-work/nexus3/etc/nexus.properties. The default is "/".
-[[ -z "$NEXUS_BASE_URL" ]] && NEXUS_BASE_URL="http://localhost:8081"
+[[ -z "$NXRMSCR_NEXUS_BASE_URL" ]] && NXRMSCR_NEXUS_BASE_URL="http://localhost:8081"
 # Strip off trailing slash if present.
 # Shell-check:
 #   Recommended "See if you can use ${variable//search/replace} instead. See SC2001".
 #   But this won't work here.
 # shellcheck disable=SC2001
-NEXUS_BASE_URL=$(echo $NEXUS_BASE_URL | sed 's#/*$##')
-
+NXRMSCR_NEXUS_BASE_URL=$(echo $NXRMSCR_NEXUS_BASE_URL | sed 's#/*$##')
 # Abs. path to Nexus logfile, defaults to /opt/nexus/sonatype-work/nexus3/log/nexus.log.
-[[ -z "$NEXUS_LOGFILE_PATH" ]] && NEXUS_LOGFILE_PATH="/opt/nexus/sonatype-work/nexus3/log/nexus.log"
-
-[[ -z "$NEXUS_TMP_PATH" ]] && NEXUS_TMP_PATH="/opt/nexus/sonatype-work/nexus3/tmp"
-
+[[ -z "$NXRMSCR_NEXUS_LOGFILE_PATH" ]] && NXRMSCR_NEXUS_LOGFILE_PATH="/opt/nexus/sonatype-work/nexus3/log/nexus.log"
+# Abs. path to Nexus tmp-file, defaults to /opt/nexus/sonatype-work/nexus3/tmp.
+[[ -z "$NXRMSCR_NEXUS_TMP_PATH" ]] && NXRMSCR_NEXUS_TMP_PATH="/opt/nexus/sonatype-work/nexus3/tmp"
 # Abs. path to the directory the PROM-metrics shall be saved to.
 # Note, the files shared with node_exporter have to be readable by the user running node_exporter (the standard user
 # for this is 'prometheus').
-[[ -z "$PROM_FILES_DIR" ]] && PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
+[[ -z "$NXRMSCR_PROM_FILES_DIR" ]] && NXRMSCR_PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
+set -u
 
 # Log with common format.
 # Note, starting the script with nohup later on redirects stdout and stderr to the given logfile.
@@ -87,9 +87,9 @@ PID_FILE="$SCRIPT_LOCATION_DIR/${SCRIPT_NAME%.*}.pid"
 # The logfile is the script name without script-extension but suffix .log.
 LOG_FILE="$SCRIPT_LOCATION_DIR/${SCRIPT_NAME%.*}.log"
 INTERVAL=10
-SERVICE_METRICS_PROMETHEUS_URL="$NEXUS_BASE_URL/service/metrics/prometheus"
+SERVICE_METRICS_PROMETHEUS_URL="$NXRMSCR_NEXUS_BASE_URL/service/metrics/prometheus"
 SERVICE_METRICS_PROMETHEUS_PROM_FILE="service_metrics_prometheus.prom"
-PROM_FILE="$PROM_FILES_DIR/$SERVICE_METRICS_PROMETHEUS_PROM_FILE"
+PROM_FILE="$NXRMSCR_PROM_FILES_DIR/$SERVICE_METRICS_PROMETHEUS_PROM_FILE"
 
 function control() {
   case "$1" in
@@ -98,7 +98,7 @@ function control() {
       log "ERROR: Called with parameter start, but found PID-file $PID_FILE with PID $(cat "$PID_FILE")." | tee -a "$LOG_FILE"
       exit 1
     else
-      mkdir -p "$PROM_FILES_DIR"
+      mkdir -p "$NXRMSCR_PROM_FILES_DIR"
       # Redirect stdout and stderr to the given logfile.
       nohup "$0" >>"$LOG_FILE" 2>&1 &
       # $? is the exit status of nohup.
@@ -127,7 +127,7 @@ function control() {
     fi
     # Signal no data to Prometheus instead sticking to the latest scrape.
     # -f: Do not moan in case the directory is empty.
-    rm -f "$PROM_FILES_DIR/*"
+    rm -f "$NXRMSCR_PROM_FILES_DIR/*"
     ;;
 
   *)
@@ -141,8 +141,8 @@ function control() {
 function scrape_nexus_prometheus_url() {
 
   # Wait until Nexus is up.
-  until curl --insecure --output /dev/null --silent --head --fail "$NEXUS_BASE_URL"; do
-    log "ERROR: Failed to connect to Nexus $NEXUS_BASE_URL. Waiting $INTERVAL seconds until retry."
+  until curl --insecure --output /dev/null --silent --head --fail "$NXRMSCR_NEXUS_BASE_URL"; do
+    log "ERROR: Failed to connect to Nexus $NXRMSCR_NEXUS_BASE_URL. Waiting $INTERVAL seconds until retry."
     sleep $INTERVAL
   done
 
@@ -151,17 +151,17 @@ function scrape_nexus_prometheus_url() {
 
 function nexus_log_warn_and_error_count_to_prom() {
 
-  if [[ -f $NEXUS_LOGFILE_PATH ]]; then
+  if [[ -f $NXRMSCR_NEXUS_LOGFILE_PATH ]]; then
     {
       echo "# HELP sonatype_nexus_num_warn_lines_in_nexus_log_total Number of WARN lines in nexus.log."
       echo "# TYPE sonatype_nexus_num_warn_lines_in_nexus_log_total counter"
-      echo "sonatype_nexus_num_warn_lines_in_nexus_log_total $(grep -cE " WARN " "$NEXUS_LOGFILE_PATH")"
+      echo "sonatype_nexus_num_warn_lines_in_nexus_log_total $(grep -cE " WARN " "$NXRMSCR_NEXUS_LOGFILE_PATH")"
     } >>"${PROM_FILE}.$$"
 
     {
       echo "# HELP sonatype_nexus_num_error_lines_in_nexus_log_total Number of ERROR lines in nexus.log."
       echo "# TYPE sonatype_nexus_num_error_lines_in_nexus_log_total counter"
-      echo "sonatype_nexus_num_error_lines_in_nexus_log_total $(grep -cE " ERROR " "$NEXUS_LOGFILE_PATH")"
+      echo "sonatype_nexus_num_error_lines_in_nexus_log_total $(grep -cE " ERROR " "$NXRMSCR_NEXUS_LOGFILE_PATH")"
     } >>"${PROM_FILE}.$$"
   fi
 }
@@ -176,7 +176,7 @@ function nexus_log_orientdb_profiler_output_to_prom() {
   #   "2652MB and DISKCACHE to 3036MB"
   # Then awk assembles the prepared texts and the recommended values. It prints the values 2652MB and 3036MB as integers
   # to strip off the "MB".
-  if [[ -f $NEXUS_LOGFILE_PATH ]]; then
+  if [[ -f $NXRMSCR_NEXUS_LOGFILE_PATH ]]; then
 
     # Prepare Prometheus metric text for max. heap size.
     max_heap_metric="# HELP sonatype_nexus_recommended_maximum_jvm_heap_megabytes"
@@ -200,13 +200,13 @@ function nexus_log_orientdb_profiler_output_to_prom() {
     # In OrientDB https://github.com/orientechnologies/orientdb/blob/develop/core/src/main/java/com/orientechnologies/common/profiler/OAbstractProfiler.java:
     #     "To improve performance set maxHeap to %dMB and DISKCACHE to %dMB"
     pattern="OAbstractProfiler.+To improve performance set maxHeap to"
-    last_matching_line=$(tac "$NEXUS_LOGFILE_PATH" | grep -m 1 -E "$pattern")
+    last_matching_line=$(tac "$NXRMSCR_NEXUS_LOGFILE_PATH" | grep -m 1 -E "$pattern")
     if [[ -n "$last_matching_line" ]]; then
 
       # This is a version using -v to define awk-vars. But it doesn't run on MacOS. It is moaning:
       #   awk: newline in string # HELP recommended_m... at source line 1
       #
-      #tac -s "$pattern" -r "$NEXUS_LOGFILE_PATH" | head -n 1 |
+      #tac -s "$pattern" -r "$NXRMSCR_NEXUS_LOGFILE_PATH" | head -n 1 |
       #  awk -v max_heap_metric="$max_heap_metric" -v max_direct_metric="$max_direct_metric" \
       #    '{printf "%s %d\n%s %d\n", max_heap_metric, $1, max_direct_metric, $5; }'>>"${PROM_FILE}.$$"
 
@@ -231,7 +231,7 @@ function nexus_log_orientdb_profiler_output_to_prom() {
 
 function blobstore_and_repo_sizes_to_prom() {
 
-  blobstore_and_repo_sizes_jsonfile=$(find $NEXUS_TMP_PATH -name "repoSizes-*" | tail -1)
+  blobstore_and_repo_sizes_jsonfile=$(find $NXRMSCR_NEXUS_TMP_PATH -name "repoSizes-*" | tail -1)
   if [[ ! -f "$blobstore_and_repo_sizes_jsonfile" ]]; then
     # Can't write PROM metric without the JSON file.
     return
@@ -301,19 +301,19 @@ function rename_prom() {
 function run() {
 
   set -u # Abort with error on unset variable.
-  log "Start scraping. Settings: NEXUS_BASE_URL: $NEXUS_BASE_URL, NEXUS_LOGFILE_PATH: $NEXUS_LOGFILE_PATH" \
-    ", PROM_FILES_DIR: $PROM_FILES_DIR"
+  log "Start scraping. Settings: NXRMSCR_NEXUS_BASE_URL: $NXRMSCR_NEXUS_BASE_URL, NXRMSCR_NEXUS_LOGFILE_PATH: $NXRMSCR_NEXUS_LOGFILE_PATH" \
+    ", NXRMSCR_PROM_FILES_DIR: $NXRMSCR_PROM_FILES_DIR"
 
   # If the umask would be a typical default of 0027, the user reading these files (usually 'prometheus' running the
   # node_exporter) could got into no read-access.
   umask 0022
 
   while true; do
-    mkdir -p "$PROM_FILES_DIR"
+    mkdir -p "$NXRMSCR_PROM_FILES_DIR"
     # -f: Files might not yet there, avoid rm-error.
-    rm -f "$PROM_FILES_DIR/*"
+    rm -f "$NXRMSCR_PROM_FILES_DIR/*"
     # Inform some reader what is the directory-content for.
-    echo "These files were written by $0." >$PROM_FILES_DIR/readme.txt
+    echo "These files were written by $0." >$NXRMSCR_PROM_FILES_DIR/readme.txt
     scrape_nexus_prometheus_url
     nexus_log_warn_and_error_count_to_prom
     nexus_log_orientdb_profiler_output_to_prom
