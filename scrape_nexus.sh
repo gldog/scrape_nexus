@@ -49,6 +49,7 @@ NXRMSCR_NEXUS_BASE_URL=$(echo $NXRMSCR_NEXUS_BASE_URL | sed 's#/*$##')
 # Note, the files shared with node_exporter have to be readable by the user running node_exporter (the standard user
 # for this is 'prometheus').
 [[ -z "$NXRMSCR_PROM_FILES_DIR" ]] && NXRMSCR_PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
+[[ -z "$_IS_SCRIPT_UNDER_TEST" ]] && _IS_SCRIPT_UNDER_TEST=false
 set -u
 
 # Log with common format.
@@ -323,10 +324,12 @@ function run() {
   done
 }
 
-if [[ -z "$IS_SCRIPT_USED_AS_LIB_FOR_TESTING" ]]; then
+if [[ "$_IS_SCRIPT_UNDER_TEST" == false ]]; then
+  set +u # Because $1 is empty at 'run'.
   if [[ -n "$1" ]]; then
     control "$1"
   else
     run
   fi
+  set -u
 fi
