@@ -53,26 +53,16 @@ NXRMSCR_NEXUS_BASE_URL=$(echo $NXRMSCR_NEXUS_BASE_URL | sed 's#/*$##')
 set -u
 
 # Log with common format.
-# Note, starting the script with nohup later on redirects stdout and stderr to the given logfile.
+# Note:
+#   - The message is expected as one argument. Don't use:
+#       log "message1" "message2"
+#     or
+#       log "message1" \
+#         "message2"
+#   - Starting the script with nohup later on redirects stdout and stderr to the given logfile. No redirection
+#     is needed here.
 function log() {
-  # Print each argument separately:
-  # Given a long string to be printed. This string is split into two lines:
-  #
-  #   log "Strings if split into lines" \"
-  #     ", result in multiple arguments."
-  #
-  # Using echo "$@" would result in:
-  #
-  #   Strings if split into lines , result in multiple arguments.
-  #
-  # Note the space before the comma.
-  # Printing each argument as a separate string without the newline character avoids that.
-  echo -n "$(date +"%Y-%m-%d %H-%M-%S") $SCRIPT_NAME: "
-  for arg in "$@"; do
-    echo -n "$arg"
-  done
-  # Print final newline.
-  echo
+  echo "$(date +"%Y-%m-%d %H-%M-%S") $SCRIPT_NAME: $1"
 }
 
 #
@@ -324,9 +314,10 @@ function rename_prom() {
 
 function run() {
 
-  set -u # Abort with error on unset variable.
-  log "Start scraping. Settings: NXRMSCR_NEXUS_BASE_URL: $NXRMSCR_NEXUS_BASE_URL, NXRMSCR_NEXUS_LOGFILE_PATH: $NXRMSCR_NEXUS_LOGFILE_PATH" \
-    ", NXRMSCR_PROM_FILES_DIR: $NXRMSCR_PROM_FILES_DIR"
+  message="Start scraping. Settings: NXRMSCR_NEXUS_BASE_URL: $NXRMSCR_NEXUS_BASE_URL"
+  message+=", NXRMSCR_NEXUS_LOGFILE_PATH: $NXRMSCR_NEXUS_LOGFILE_PATH"
+  message+=", NXRMSCR_PROM_FILES_DIR: $NXRMSCR_PROM_FILES_DIR"
+  log "$message"
 
   # If the umask would be a typical default of 0027, the user reading these files (usually 'prometheus' running the
   # node_exporter) could got into no read-access.
