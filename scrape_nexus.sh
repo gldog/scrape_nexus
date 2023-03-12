@@ -141,13 +141,36 @@ function control() {
 
 function scrape_nexus_prometheus_url() {
 
-  # Wait until Nexus is up.
-  until curl --insecure --output /dev/null --silent --head --fail "$NXRMSCR_NEXUS_BASE_URL"; do
-    log "ERROR: Failed to connect to Nexus $NXRMSCR_NEXUS_BASE_URL. Waiting $INTERVAL seconds until retry."
-    sleep $INTERVAL
-  done
+  # curls exits with a non-zero value in case the server can't be reached. Don't abort this script in those cases.
+  set +e
 
-  curl -s --insecure "$SERVICE_METRICS_PROMETHEUS_URL" -o "${PROM_FILE}.$$"
+  # Wait until Nexus is up.
+  # 4xx and 5xx counts to 'not available' (because '-f').
+  if [[ "$_IS_SCRIPT_UNDER_TEST" = false ]]; then
+    until curl -fIks "$NXRMSCR_NEXUS_BASE_URL" -o /dev/null; do
+      log "ERROR: Failed to connect to $NXRMSCR_NEXUS_BASE_URL. Waiting $INTERVAL seconds until retry."
+      rm -f "${PROM_FILE}.$$"
+      rm -f "${PROM_FILE}"
+      sleep $INTERVAL
+    done
+  fi
+
+  out=$(curl -fksS "$SERVICE_METRICS_PROMETHEUS_URL" -o "${PROM_FILE}.$$" 2>&1)
+  # Because of '%{http_code}' the output starts with the HTTP status code. This is expected to be 200. But on errors
+  # this could be 4xx or 5xx as well. If Nexus can't be reached it is 000. At 4xx and 5xx it is followed by an
+  # error message from curl. It is:
+  #   curl: (22) The requested URL returned error: 400
+  #   curl: (22) The requested URL returned error: 500
+  #   url: (7) Failed to connect to localhost port 8081 after 2 ms: Couldn't connect to server
+  # SC2181: "Check exit code directly with e.g. if mycmd;, not indirectly with $?":
+  # shellcheck disable=SC2181
+  if [[ "$?" -ne 0 ]]; then
+    log "ERROR: Failed to connect to $SERVICE_METRICS_PROMETHEUS_URL. $out"
+    rm -f "${PROM_FILE}.$$"
+    rm -f "${PROM_FILE}"
+  fi
+
+  set -e
 }
 
 function nexus_log_warn_and_error_count_to_prom() {
