@@ -1,27 +1,9 @@
 #!/bin/bash
 
 source lib.sh
-source ../scrape_nexus.sh
-
-# scrape_nexus.sh sets set -e. But the test-functions uses the diff-command which exits with 1 in case of a diff.
-# That would lead to an abortion and no subsequent tests would be executed.
-set +e
+set -e
 
 is_any_test_failed=0
-
-function compare() {
-  local promfile=$1
-  local expected_filecontent=$2
-
-  if [[ "$(cat "$promfile")" == "$expected_filecontent" ]]; then
-    echo "  ok"
-  else
-    echo "  FAILED"
-    is_any_test_failed=1
-    diff <(cat "$promfile") <(printf '%s\n' "$expected_filecontent")
-    #diff --side-by-side --suppress-common-lines <(cat "$promfile") <(printf '%s\n' "$expected_filecontent")
-  fi
-}
 
 #
 #
@@ -29,6 +11,7 @@ echo "Test-3, Test-Case-1: No repoSizes-JSON file present."
 #
 export NXRMSCR_NEXUS_TMP_PATH="resources/test3/tmp-no-repoSizes-files"
 export PROM_FILE="tmp/out.t3.tc1.prom"
+source ../scrape_nexus.sh
 set_up
 printf "%s\n\n" "$CONTROL_LINE" >"${PROM_FILE}.$$"
 blobstore_and_repo_sizes_to_prom
@@ -37,7 +20,11 @@ rename_prom
 # No PROM-data.
 expected_filecontent="$(printf "%s\n\n" "$CONTROL_LINE")"
 
-compare "$PROM_FILE" "$expected_filecontent"
+message=$(compare "$PROM_FILE" "$expected_filecontent")
+echo "$message"
+if [[ "$message" == *"FAILED"* ]]; then
+  is_any_test_failed=1
+fi
 
 #
 #
@@ -45,6 +32,7 @@ echo "Test-3, Test-Case-2: Empty repoSizes-JSON file."
 #
 export NXRMSCR_NEXUS_TMP_PATH="resources/test3/tmp/repoSizes-20230308-230000.json"
 export PROM_FILE="tmp/out.t3.tc2.prom"
+source ../scrape_nexus.sh
 set_up
 printf "%s\n\n" "$CONTROL_LINE" >"${PROM_FILE}.$$"
 blobstore_and_repo_sizes_to_prom
@@ -53,7 +41,11 @@ rename_prom
 # No PROM-data.
 expected_filecontent="$(printf "%s\n\n" "$CONTROL_LINE")"
 
-compare "$PROM_FILE" "$expected_filecontent"
+message=$(compare "$PROM_FILE" "$expected_filecontent")
+echo "$message"
+if [[ "$message" == *"FAILED"* ]]; then
+  is_any_test_failed=1
+fi
 
 #
 #
@@ -61,6 +53,7 @@ echo "Test-3, Test-Case-3: repoSizes-JSON file with 2 blobstores and 2 repos eac
 #
 export NXRMSCR_NEXUS_TMP_PATH="resources/test3/tmp/repoSizes-20230308-230001.json"
 export PROM_FILE="tmp/out.t3.tc3.prom"
+source ../scrape_nexus.sh
 printf "%s\n\n" "$CONTROL_LINE" >"${PROM_FILE}.$$"
 blobstore_and_repo_sizes_to_prom
 rename_prom
@@ -96,7 +89,11 @@ sonatype_nexus_repoSizes_repo_reclaimableBytes{blobstore="blobstore2",repo="bs-b
 EOF
 )
 
-compare "$PROM_FILE" "$expected_filecontent"
+message=$(compare "$PROM_FILE" "$expected_filecontent")
+echo "$message"
+if [[ "$message" == *"FAILED"* ]]; then
+  is_any_test_failed=1
+fi
 
 if [[ "$is_any_test_failed" == 1 ]]; then
   echo "Test-3 FAILED: At lest one test failed."
