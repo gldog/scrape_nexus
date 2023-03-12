@@ -25,9 +25,6 @@
 #
 # Feel free to append metrics you interested in.
 
-# Exit script on failure.
-set -e
-
 #
 # Environment vars set from extern.
 #
@@ -86,7 +83,8 @@ function control() {
   case "$1" in
   start)
     if [[ -f $PID_FILE ]]; then
-      log "ERROR: Called with parameter start, but found PID-file $PID_FILE with PID $(cat "$PID_FILE")." | tee -a "$LOG_FILE"
+      log "ERROR: Called with parameter start, but found PID-file $PID_FILE with PID $(cat "$PID_FILE")." |
+        tee -a "$LOG_FILE"
       exit 1
     else
       mkdir -p "$NXRMSCR_PROM_FILES_DIR"
@@ -180,16 +178,10 @@ function nexus_log_warn_and_error_count_to_prom() {
   fi
 }
 
+# Build Prometheus metrics for recommended_maximum_jvm_heap_megabytes and and recommended_maximum_direct_memory_megabytes
+# and print them to the PROM-file.
 function nexus_log_orientdb_profiler_output_to_prom() {
 
-  # Build both Prometheus metrics and print them to the temporary PROM-file already created.
-  # tac starts reading the logfile from the end. This is to get the latest recommended values.
-  # After the commands
-  #   tac -s "$pattern" -r "$nexus_log" | head -n 1
-  # the output is
-  #   "2652MB and DISKCACHE to 3036MB"
-  # Then awk assembles the prepared texts and the recommended values. It prints the values 2652MB and 3036MB as integers
-  # to strip off the "MB".
   if [[ -f $NXRMSCR_NEXUS_LOGFILE_PATH ]]; then
 
     # Prepare Prometheus metric text for max. heap size.
@@ -211,10 +203,14 @@ function nexus_log_orientdb_profiler_output_to_prom() {
 
     # The lines of interest can be found by the following pattern. It is printed from the OAbstractProfiler. This class
     # is part of the OrientDB code, not the Nexus code.
-    # In OrientDB https://github.com/orientechnologies/orientdb/blob/develop/core/src/main/java/com/orientechnologies/common/profiler/OAbstractProfiler.java:
+    # From OrientDB https://github.com/orientechnologies/orientdb/blob/develop/core/src/main/java/com/orientechnologies/common/profiler/OAbstractProfiler.java:
     #     "To improve performance set maxHeap to %dMB and DISKCACHE to %dMB"
     pattern="OAbstractProfiler.+To improve performance set maxHeap to"
-    last_matching_line=$(tac "$NXRMSCR_NEXUS_LOGFILE_PATH" | grep -m 1 -E "$pattern")
+
+    # tac starts reading the logfile from the end. This is to get the latest recommended values.
+    # Extend grep with 'true': grep exits with a non-zero value in case the pattern can't be found. Don't abort this
+    # script in those cases.
+    last_matching_line=$(tac "$NXRMSCR_NEXUS_LOGFILE_PATH" | grep -m 1 -E "$pattern" || true)
     if [[ -n "$last_matching_line" ]]; then
 
       # This is a version using -v to define awk-vars. But it doesn't run on MacOS. It is moaning:
@@ -226,11 +222,12 @@ function nexus_log_orientdb_profiler_output_to_prom() {
 
       # This is a portable version.
       # The delete ARGV is to prevent awk treating the ARGs as argument-filenames.
-      # A matching line ends with the following sentence (with header showing negative indexes):
-      #                                                 -4  -3        -2 -1      0
-      #   ... To improve performance set maxHeap to 2652MB and DISKCACHE to 3036MB
+      # A matching line ends with the following sentence:
+      #   Index:                                                    -4  -3        -2 -1      0
+      #   Log-text:   ... To improve performance set maxHeap to 2652MB and DISKCACHE to 3036MB
       # awk can print fields counting from right to left using the awk-variable NF (number of fields in current row).
-      # To print the '3036MB', the $NF is used, and to print the '2652MB' the $(NF-4) ist used.
+      # To get the '3036MB' the $NF is used, and to get the '2652MB' the $(NF-4) is used. Both are printed as int
+      # to strip off the 'MB'.
       echo "$last_matching_line" |
         awk 'BEGIN {max_heap_metric=ARGV[1]; max_direct_metric=ARGV[2]; delete ARGV[1]; delete ARGV[2]}
           {printf "%s %d\n%s %d\n", max_heap_metric, $(NF-4), max_direct_metric, $NF }' \
@@ -273,17 +270,17 @@ function blobstore_and_repo_sizes_to_prom() {
   for blobstore_obj in $(jq -c '. | to_entries | .[]' "$blobstore_and_repo_sizes_jsonfile"); do
     is_any_metric=true
     # jq -r (raw) prints the blobstore-names without surrounding quotes..
-    blobstore_name=$(echo $blobstore_obj | jq -r '.key')
+    blobstore_name=$(echo "$blobstore_obj" | jq -r '.key')
     # Blobstore: totalBlobStoreBytes
-    totalBlobStoreBytes=$(echo $blobstore_obj | jq '.value.totalBlobStoreBytes')
+    totalBlobStoreBytes=$(echo "$blobstore_obj" | jq '.value.totalBlobStoreBytes')
     totalBlobStoreBytes_prom+="sonatype_nexus_repoSizes_blobstore_totalBlobStoreBytes"
     totalBlobStoreBytes_prom+="{blobstore=\"$blobstore_name\"} $totalBlobStoreBytes\n"
     # Blobstore: totalReclaimableBytes
-    totalReclaimableBytes=$(echo $blobstore_obj | jq '.value.totalReclaimableBytes')
+    totalReclaimableBytes=$(echo "$blobstore_obj" | jq '.value.totalReclaimableBytes')
     totalReclaimableBytes_prom+="sonatype_nexus_repoSizes_blobstore_totalReclaimableBytes"
     totalReclaimableBytes_prom+="{blobstore=\"$blobstore_name\"} $totalReclaimableBytes\n"
     # Blobstore: totalRepoNameMissingCount
-    totalRepoNameMissingCount=$(echo $blobstore_obj | jq '.value.totalRepoNameMissingCount')
+    totalRepoNameMissingCount=$(echo "$blobstore_obj" | jq '.value.totalRepoNameMissingCount')
     totalRepoNameMissingCount_prom+="sonatype_nexus_repoSizes_blobstore_totalRepoNameMissingCount"
     totalRepoNameMissingCount_prom+="{blobstore=\"$blobstore_name\"} $totalRepoNameMissingCount\n"
     for repo_obj in $(echo "$blobstore_obj" | jq -c '.value.repositories | to_entries | .[]'); do
@@ -299,12 +296,12 @@ function blobstore_and_repo_sizes_to_prom() {
     done
   done
 
-  [[ "$is_any_metric" = true ]] &&
+  if [[ "$is_any_metric" = true ]]; then
     printf "%b%b%b%b%b" \
       "$totalBlobStoreBytes_prom" "$totalReclaimableBytes_prom" "$totalRepoNameMissingCount_prom" \
       "$totalBytes_prom" "$reclaimableBytes_prom" \
       >>"${PROM_FILE}.$$"
-
+  fi
 }
 
 # Provide the PROM-file atomically.
