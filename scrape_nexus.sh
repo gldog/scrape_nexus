@@ -1,5 +1,6 @@
 #!/bin/bash
 
+#--------------------------------------------------------------------------------------------------------------- 120 --#
 # Collect Nexus metrics of different sources and assembles them as PROM-metrics in one single PROM-file.
 #
 # Sonatype Nexus Repository provides metrics in PROM-format. It provides metrics about Nexus application as well as the
@@ -47,6 +48,7 @@ NXRMSCR_NEXUS_BASE_URL=$(echo $NXRMSCR_NEXUS_BASE_URL | sed 's#/*$##')
 # for this is 'prometheus').
 [[ -z "$NXRMSCR_PROM_FILES_DIR" ]] && NXRMSCR_PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
 [[ -z "$_IS_SCRIPT_UNDER_TEST" ]] && _IS_SCRIPT_UNDER_TEST=false
+[[ -z "$NXRMSCR_DIRECTORY_SIZES_OF" ]] && NXRMSCR_DIRECTORY_SIZES_OF=""
 set -u
 
 # Log with common format.
@@ -131,16 +133,20 @@ function scrape_nexus_prometheus_url() {
 
   # curls exits with a non-zero value in case the server can't be reached. Don't abort this script in those cases.
   set +e
-
+  is_connection_failed=false
   # Wait until Nexus is up.
   # 4xx and 5xx counts to 'not available' (because '-f').
-  if [[ "$_IS_SCRIPT_UNDER_TEST" = false ]]; then
+  if [[ "$_IS_SCRIPT_UNDER_TEST" == false ]]; then
     until curl -fIks "$NXRMSCR_NEXUS_BASE_URL" -o /dev/null; do
       log "ERROR: Failed to connect to $NXRMSCR_NEXUS_BASE_URL. Waiting $INTERVAL seconds until retry."
       rm -f "${PROM_FILE}.$$"
       rm -f "${PROM_FILE}"
+      is_connection_failed=true
       sleep $INTERVAL
     done
+  fi
+  if [[ $is_connection_failed == true ]]; then
+    log "Connection to $NXRMSCR_NEXUS_BASE_URL successful."
   fi
 
   out=$(curl -fksS "$SERVICE_METRICS_PROMETHEUS_URL" -o "${PROM_FILE}.$$" 2>&1)
@@ -152,7 +158,7 @@ function scrape_nexus_prometheus_url() {
   #   url: (7) Failed to connect to localhost port 8081 after 2 ms: Couldn't connect to server
   # SC2181: "Check exit code directly with e.g. if mycmd;, not indirectly with $?":
   # shellcheck disable=SC2181
-  if [[ "$?" -ne 0 ]]; then
+  if [[ $? -ne 0 ]]; then
     log "ERROR: Failed to connect to $SERVICE_METRICS_PROMETHEUS_URL. $out"
     rm -f "${PROM_FILE}.$$"
     rm -f "${PROM_FILE}"
@@ -296,11 +302,47 @@ function blobstore_and_repo_sizes_to_prom() {
     done
   done
 
-  if [[ "$is_any_metric" = true ]]; then
+  if [[ "$is_any_metric" == true ]]; then
     printf "%b%b%b%b%b" \
       "$totalBlobStoreBytes_prom" "$totalReclaimableBytes_prom" "$totalRepoNameMissingCount_prom" \
       "$totalBytes_prom" "$reclaimableBytes_prom" \
       >>"${PROM_FILE}.$$"
+  fi
+}
+
+# See also https://www.robustperception.io/monitoring-directory-sizes-with-the-textfile-collector/
+function directory_sizes_to_prom() {
+
+  if [[ -n "$NXRMSCR_DIRECTORY_SIZES_OF" ]]; then
+    # Check if dir(s) exist.
+    dirs=$(echo "$NXRMSCR_DIRECTORY_SIZES_OF" | tr ":" " ")
+    unixtime_before_ls=$(date +%s)
+    set +e
+    # ls: Prints information of existing dirs to stdout and information about non-existing dirs to stderr. We are only
+    # interested in stderr here (and the exit status).
+    # Redirect stderr to ls_out, but not stdout. The order of '2>&1' and '>/dev/null' matters.
+    ls_out=$(eval ls "$dirs" 2>&1 >/dev/null)
+    ls_exit_code=$?
+    set -e
+    unixtime_after_ls=$(date +%s)
+    if [[ $ls_exit_code == 0 ]]; then
+      # eval is needed in case $dirs contains parameters to be expanded. E.g. path/to{a,b}. Without eval, the _string_
+      # 'path/to{a,b}' is passed to ls, not the expanded 'path/to/a path/to/b'. Same with du later on.
+      prom="$(eval du -sk "$dirs" | awk '{ print "node_directory_size_bytes{directory=\"" $2 "\"" "}" " " $1*1024}')\n"
+      prom+="# HELP The duration the du-command took for all directories in NXRMSCR_DIRECTORY_SIZES_OF.\n"
+      prom+="# TYPE node_directory_size_du_exec_duration_seconds gauge\n"
+      prom+="$(echo "$unixtime_before_ls $unixtime_after_ls" |
+        awk '{print "node_directory_size_du_exec_duration_seconds " $2-$1"\\n"}')\n"
+      printf "%b" "$prom" >>"${PROM_FILE}.$$"
+    else
+      # Write an error message.
+      # The check for dir-existence with ls outputs something like
+      #   ls: the-dir: No such file or directory
+      # But using the ls as check for existence is an internal implementation. The user should not see the output of ls.
+      # The two sed prettifies the error message from ls. The first call replaces the "ls: " with ";". The second one
+      # removed the first ";".
+      log "ERROR: NXRMSCR_DIRECTORY_SIZES_OF: $(echo "$ls_out" | tr -d '\n' | sed 's#ls: #; #g' | sed 's#; ##1')"
+    fi
   fi
 }
 
@@ -330,6 +372,7 @@ function run() {
     nexus_log_warn_and_error_count_to_prom
     nexus_log_orientdb_profiler_output_to_prom
     blobstore_and_repo_sizes_to_prom
+    directory_sizes_to_prom
     rename_prom
     sleep $INTERVAL
   done
@@ -344,3 +387,5 @@ if [[ "$_IS_SCRIPT_UNDER_TEST" == false ]]; then
   fi
   set -u
 fi
+
+#--------------------------------------------------------------------------------------------------------------- 120 --#
