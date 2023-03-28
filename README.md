@@ -4,14 +4,15 @@ README
 # The script
 
 This script collects Nexus-related data, converts them to PROM format, and writes the PROM-data to a file where the
-tool [`node_exproter`](https://github.com/prometheus/node_exporter) can read it with its
+tool [`node_exporter`](https://github.com/prometheus/node_exporter) can read it with its
 feature `--collector.textfile.directory`.
-`node_exporter' is used as the conveyor for all Nexus-metrics.
+`node_exporter` is used as the conveyor for all Nexus-metrics.
 
 The advantage using `node_exporter` are:
 
-* You have only one scrape-config in Prometheus.
-* There is a chance your Nexus-VM is already scraped.
+* You (or the Promethus admin) have only one scrape-config in Prometheus.
+* Once the scrape-config is set up by the Prometheus admin, the Nexus admin controls what data is scraped.
+* There is a chance your Nexus-VM is already scraped by `nnode_exporter`.
 * You don't need an additional network-rule for the Nexus-PROM endpoint.
 
 # Collected data
@@ -62,7 +63,7 @@ An entry in the `nexus.log` could be something like:
 
     2017-05-05 22:57:18,268-0400 INFO  [Timer-1] *SYSTEM com.orientechnologies.common.profiler.OAbstractProfiler$MemoryChecker - Database 'analytics' uses 1,726MB/2,048MB of DISKCACHE memory, while Heap is not completely used (usedHeap=2210MB maxHeap=3641MB). To improve performance set maxHeap to 2652MB and DISKCACHE to 3036MB
 
-The transformed PORM is:
+The transformed PROM is:
 
     # HELP sonatype_nexus_recommended_maximum_jvm_heap_megabytes Recommendation for the JVM heap size in MB read from nexus.log.
     # TYPE sonatype_nexus_recommended_maximum_jvm_heap_megabytes gauge
@@ -72,7 +73,7 @@ The transformed PORM is:
     # TYPE sonatype_nexus_recommended_maximum_direct_memory_megabytes gauge
     sonatype_nexus_recommended_maximum_direct_memory_megabytes 3036
 
-See links:
+See also links:
 
 Sonatype: [Optimizing OrientDB Database Memory](https://support.sonatype.com/hc/en-us/articles/115007093447-Optimizing-OrientDB-Database-Memory-)
 
@@ -87,7 +88,9 @@ Path to Nexus `tmp` directory.
 E.g. `/opt/nexus/sonatype-work/nexus3/tmp`.
 
 This is the directory a Nexus-task calling the Groovy script
-`nx-blob-repo-space-report-20220510.groovy` writes its report-files to.
+`nx-blob-repo-space-report-20220510.groovy` as described
+in [Investigating Blob Store and Repository Size and Space Usage](https://support.sonatype.com/hc/en-us/articles/115009519847-Investigating-Blob-Store-and-Repository-Size-and-Space-Usage)
+writes its report-files to.
 If given, the script transforms that blobstore- and repo-sizes, and information about reclaimable-sizes.
 F.y.i., the files have the prefix `repoSizes-`.
 
@@ -216,7 +219,7 @@ E.g. `/tmp/nodeexporter_collector_textfile_directory`
 
 # Start, Stop, Logging
 
-The scirpt makes itself a deamon:
+The scirpt makes itself a daemon:
 
     scrape_nexus.sh start
 
@@ -237,11 +240,12 @@ Here is an example comprising 3 configs:
 * nexus-scraper.service, controls the scrape_nexus.sh
 
 Normally you use just the `nexus.service`.
-You can use `nexus-app.service` and `nexus-scraper` independently.
+You can use `nexus-app.service` and `nexus-scraper` as well and independently.
 But `nexus.service` assures the scraper starts up after Nexus, and shuts down before Nexus.
 
 Credits
-to [Controlling a Multi-Service Application with systemd](https://alesnosek.com/blog/2016/12/04/controlling-a-multi-service-application-with-systemd/).
+to [Controlling a Multi-Service Application with systemd](https://alesnosek.com/blog/2016/12/04/controlling-a-multi-service-application-with-systemd/)
+.
 
 nexus.service:
 
