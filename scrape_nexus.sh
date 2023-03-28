@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#--------------------------------------------------------------------------------------------------------------- 120 --#
+#-- 120 ---------------------------------------------------------------------------------------------------------------#
 # Collect Nexus metrics of different sources and assembles them as PROM-metrics in one single PROM-file.
 #
 # Sonatype Nexus Repository provides metrics in PROM-format. It provides metrics about Nexus application as well as the
@@ -41,12 +41,12 @@ set +u
 NXRMSCR_NEXUS_BASE_URL=$(echo $NXRMSCR_NEXUS_BASE_URL | sed 's#/*$##')
 # Abs. path to Nexus logfile, defaults to /opt/nexus/sonatype-work/nexus3/log/nexus.log.
 [[ -z "$NXRMSCR_NEXUS_LOGFILE_PATH" ]] && NXRMSCR_NEXUS_LOGFILE_PATH="/opt/nexus/sonatype-work/nexus3/log/nexus.log"
-# Abs. path to Nexus tmp-file, defaults to /opt/nexus/sonatype-work/nexus3/tmp.
-[[ -z "$NXRMSCR_NEXUS_TMP_PATH" ]] && NXRMSCR_NEXUS_TMP_PATH="/opt/nexus/sonatype-work/nexus3/tmp"
+# Abs. path to Nexus tmp-file.
+[[ -z "$NXRMSCR_NEXUS_TMP_PATH" ]] && NXRMSCR_NEXUS_TMP_PATH=""
 # Abs. path to the directory the PROM-metrics shall be saved to.
 # Note, the files shared with node_exporter have to be readable by the user running node_exporter (the standard user
 # for this is 'prometheus').
-[[ -z "$NXRMSCR_PROM_FILES_DIR" ]] && NXRMSCR_PROM_FILES_DIR="/tmp/node_exporter_collector_textfiles"
+[[ -z "$NXRMSCR_PROM_FILE_DIR" ]] && NXRMSCR_PROM_FILE_DIR="/tmp/node_exporter_collector_textfiles"
 [[ -z "$_IS_SCRIPT_UNDER_TEST" ]] && _IS_SCRIPT_UNDER_TEST=false
 [[ -z "$NXRMSCR_DIRECTORY_SIZES_OF" ]] && NXRMSCR_DIRECTORY_SIZES_OF=""
 set -u
@@ -79,7 +79,7 @@ LOG_FILE="$SCRIPT_LOCATION_DIR/${SCRIPT_NAME%.*}.log"
 INTERVAL=10
 SERVICE_METRICS_PROMETHEUS_URL="$NXRMSCR_NEXUS_BASE_URL/service/metrics/prometheus"
 SERVICE_METRICS_PROMETHEUS_PROM_FILE="service_metrics_prometheus.prom"
-PROM_FILE="$NXRMSCR_PROM_FILES_DIR/$SERVICE_METRICS_PROMETHEUS_PROM_FILE"
+PROM_FILE="$NXRMSCR_PROM_FILE_DIR/$SERVICE_METRICS_PROMETHEUS_PROM_FILE"
 
 function control() {
   case "$1" in
@@ -89,7 +89,7 @@ function control() {
         tee -a "$LOG_FILE"
       exit 1
     else
-      mkdir -p "$NXRMSCR_PROM_FILES_DIR"
+      mkdir -p "$NXRMSCR_PROM_FILE_DIR"
       # Redirect stdout and stderr to the given logfile.
       nohup "$0" >>"$LOG_FILE" 2>&1 &
       # $? is the exit status of nohup.
@@ -118,7 +118,7 @@ function control() {
     fi
     # Signal no data to Prometheus instead sticking to the latest scrape.
     # -f: Do not moan in case the directory is empty.
-    rm -f "$NXRMSCR_PROM_FILES_DIR/*"
+    rm -f "$NXRMSCR_PROM_FILE_DIR/*"
     ;;
 
   *)
@@ -248,9 +248,11 @@ function nexus_log_orientdb_profiler_output_to_prom() {
 
 function blobstore_and_repo_sizes_to_prom() {
 
-  blobstore_and_repo_sizes_jsonfile=$(find $NXRMSCR_NEXUS_TMP_PATH -name "repoSizes-*" | tail -1)
+  if [[ -z "$NXRMSCR_NEXUS_TMP_PATH" ]]; then
+    return
+  fi
+  blobstore_and_repo_sizes_jsonfile=$(find "$NXRMSCR_NEXUS_TMP_PATH" -name "repoSizes-*" | tail -1)
   if [[ ! -f "$blobstore_and_repo_sizes_jsonfile" ]]; then
-    # Can't write PROM metric without the JSON file.
     return
   fi
 
@@ -355,7 +357,8 @@ function run() {
 
   message="Start scraping. Settings: NXRMSCR_NEXUS_BASE_URL: $NXRMSCR_NEXUS_BASE_URL"
   message+=", NXRMSCR_NEXUS_LOGFILE_PATH: $NXRMSCR_NEXUS_LOGFILE_PATH"
-  message+=", NXRMSCR_PROM_FILES_DIR: $NXRMSCR_PROM_FILES_DIR"
+  message+=", NXRMSCR_PROM_FILE_DIR: $NXRMSCR_PROM_FILE_DIR"
+  message+=", NXRMSCR_DIRECTORY_SIZES_OF: $NXRMSCR_DIRECTORY_SIZES_OF"
   log "$message"
 
   # If the umask would be a typical default of 0027, the user reading these files (usually 'prometheus' running the
@@ -363,11 +366,11 @@ function run() {
   umask 0022
 
   while true; do
-    mkdir -p "$NXRMSCR_PROM_FILES_DIR"
+    mkdir -p "$NXRMSCR_PROM_FILE_DIR"
     # -f: Files might not yet there, avoid rm-error.
-    rm -f "$NXRMSCR_PROM_FILES_DIR/*"
+    rm -f "$NXRMSCR_PROM_FILE_DIR/*"
     # Inform some reader what is the directory-content for.
-    echo "These files were written by $0." >$NXRMSCR_PROM_FILES_DIR/readme.txt
+    echo "These files were written by $0." >$NXRMSCR_PROM_FILE_DIR/readme.txt
     scrape_nexus_prometheus_url
     nexus_log_warn_and_error_count_to_prom
     nexus_log_orientdb_profiler_output_to_prom
@@ -378,6 +381,9 @@ function run() {
   done
 }
 
+#
+# MAIN
+#
 if [[ "$_IS_SCRIPT_UNDER_TEST" == false ]]; then
   set +u # Because $1 is empty at 'run'.
   if [[ -n "$1" ]]; then
@@ -388,4 +394,4 @@ if [[ "$_IS_SCRIPT_UNDER_TEST" == false ]]; then
   set -u
 fi
 
-#--------------------------------------------------------------------------------------------------------------- 120 --#
+#-- 120 ---------------------------------------------------------------------------------------------------------------#

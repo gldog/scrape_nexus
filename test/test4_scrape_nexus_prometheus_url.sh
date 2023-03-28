@@ -38,8 +38,8 @@ if [[ -n "$out" ]]; then
   echo "ERROR: Unexpected error message."
   is_any_test_failed=1
 fi
-if [[ ! $(find "$NXRMSCR_PROM_FILES_DIR" -type f | wc -l) -eq 1 ]]; then
-  echo "ERROR: Missing PROM file in NXRMSCR_PROM_FILES_DIR $NXRMSCR_PROM_FILES_DIR"
+if [[ ! $(find "$NXRMSCR_PROM_FILE_DIR" -type f | wc -l) -eq 1 ]]; then
+  echo "ERROR: Missing PROM file in NXRMSCR_PROM_FILE_DIR $NXRMSCR_PROM_FILE_DIR"
   is_any_test_failed=1
 fi
 
@@ -55,8 +55,8 @@ if [[ ! "$out" == *"curl: (22) The requested URL returned error: 400"* ]]; then
   echo "ERROR: Missing error message."
   is_any_test_failed=1
 fi
-if [[ $(find "$NXRMSCR_PROM_FILES_DIR" -type f | wc -l) -gt 0 ]]; then
-  echo "ERROR: Found file in NXRMSCR_PROM_FILES_DIR $NXRMSCR_PROM_FILES_DIR"
+if [[ $(find "$NXRMSCR_PROM_FILE_DIR" -type f | wc -l) -gt 0 ]]; then
+  echo "ERROR: Found file in NXRMSCR_PROM_FILE_DIR $NXRMSCR_PROM_FILE_DIR"
   is_any_test_failed=1
 fi
 
@@ -72,8 +72,8 @@ if [[ ! "$out" == *"curl: (22) The requested URL returned error: 500"* ]]; then
   echo "ERROR: Missing error message."
   is_any_test_failed=1
 fi
-if [[ $(find "$NXRMSCR_PROM_FILES_DIR" -type f | wc -l) -gt 0 ]]; then
-  echo "ERROR: Found file in NXRMSCR_PROM_FILES_DIR $NXRMSCR_PROM_FILES_DIR"
+if [[ $(find "$NXRMSCR_PROM_FILE_DIR" -type f | wc -l) -gt 0 ]]; then
+  echo "ERROR: Found file in NXRMSCR_PROM_FILE_DIR $NXRMSCR_PROM_FILE_DIR"
   is_any_test_failed=1
 fi
 
@@ -88,8 +88,8 @@ if [[ ! "$out" == *"url: (7) Failed to connect to localhost port"* ]]; then
   echo "ERROR: Missing error message."
   is_any_test_failed=1
 fi
-if [[ $(find "$NXRMSCR_PROM_FILES_DIR" -type f | wc -l) -gt 0 ]]; then
-  echo "ERROR: Found file in NXRMSCR_PROM_FILES_DIR $NXRMSCR_PROM_FILES_DIR"
+if [[ $(find "$NXRMSCR_PROM_FILE_DIR" -type f | wc -l) -gt 0 ]]; then
+  echo "ERROR: Found file in NXRMSCR_PROM_FILE_DIR $NXRMSCR_PROM_FILE_DIR"
   is_any_test_failed=1
 fi
 
