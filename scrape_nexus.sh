@@ -61,7 +61,8 @@ set -u
 #   - Starting the script with nohup later on redirects stdout and stderr to the given logfile. No redirection
 #     is needed here.
 function log() {
-  echo "$(date +"%Y-%m-%d %H-%M-%S") $SCRIPT_NAME: $1"
+  # Note, on BSD date (MacOS) the %N (nanoseconds) isn't implemented. Running this script on that OS prints "3N".
+  echo "$(date "+%Y-%m-%dT%H:%M:%S,%3N%z") $SCRIPT_NAME: $1"
 }
 
 #
