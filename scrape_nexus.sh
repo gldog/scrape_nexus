@@ -46,7 +46,7 @@ NXRMSCR_NEXUS_BASE_URL=$(echo $NXRMSCR_NEXUS_BASE_URL | sed 's#/*$##')
 # Abs. path to the directory the PROM-metrics shall be saved to.
 # Note, the files shared with node_exporter have to be readable by the user running node_exporter (the standard user
 # for this is 'prometheus').
-[[ -z "$NXRMSCR_PROM_FILE_DIR" ]] && NXRMSCR_PROM_FILE_DIR="/tmp/node_exporter_collector_textfiles"
+[[ -z "$NXRMSCR_PROM_FILE_DIR" ]] && NXRMSCR_PROM_FILE_DIR="/tmp/node_exporter_collector_textfile_directory"
 [[ -z "$_IS_SCRIPT_UNDER_TEST" ]] && _IS_SCRIPT_UNDER_TEST=false
 [[ -z "$NXRMSCR_DIRECTORY_SIZES_OF" ]] && NXRMSCR_DIRECTORY_SIZES_OF=""
 set -u
@@ -168,20 +168,22 @@ function scrape_nexus_prometheus_url() {
   set -e
 }
 
+# Note, Nexus rotates the nexus.log each night. This resets the counts of WARN and ERROR.
 function nexus_log_warn_and_error_count_to_prom() {
 
   if [[ -f $NXRMSCR_NEXUS_LOGFILE_PATH ]]; then
-    {
-      echo "# HELP sonatype_nexus_num_warn_lines_in_nexus_log_total Number of WARN lines in nexus.log."
-      echo "# TYPE sonatype_nexus_num_warn_lines_in_nexus_log_total counter"
-      echo "sonatype_nexus_num_warn_lines_in_nexus_log_total $(grep -cE " WARN " "$NXRMSCR_NEXUS_LOGFILE_PATH")"
-    } >>"${PROM_FILE}.$$"
-
-    {
-      echo "# HELP sonatype_nexus_num_error_lines_in_nexus_log_total Number of ERROR lines in nexus.log."
-      echo "# TYPE sonatype_nexus_num_error_lines_in_nexus_log_total counter"
-      echo "sonatype_nexus_num_error_lines_in_nexus_log_total $(grep -cE " ERROR " "$NXRMSCR_NEXUS_LOGFILE_PATH")"
-    } >>"${PROM_FILE}.$$"
+    # true: grep exits with 1 in case count is 0. Ignore that exit code.
+    warn_count=$(grep -cE " WARN " "$NXRMSCR_NEXUS_LOGFILE_PATH" || true)
+    error_count=$(grep -cE " ERROR " "$NXRMSCR_NEXUS_LOGFILE_PATH" || true)
+    # Prepare Prometheus metric text for number of warnings.
+    prom="# HELP sonatype_nexus_num_warn_lines_in_nexus_log_total Number of WARN lines in nexus.log.\n"
+    prom+="# TYPE sonatype_nexus_num_warn_lines_in_nexus_log_total counter\n"
+    prom+="sonatype_nexus_num_warn_lines_in_nexus_log_total $warn_count\n"
+    # Prepare Prometheus metric text for number of errors.
+    prom+="# HELP sonatype_nexus_num_error_lines_in_nexus_log_total Number of ERROR lines in nexus.log.\n"
+    prom+="# TYPE sonatype_nexus_num_error_lines_in_nexus_log_total counter\n"
+    prom+="sonatype_nexus_num_error_lines_in_nexus_log_total $error_count\n"
+    printf "%b" "$prom" >>"${PROM_FILE}.$$"
   fi
 }
 
@@ -192,21 +194,16 @@ function nexus_log_orientdb_profiler_output_to_prom() {
   if [[ -f $NXRMSCR_NEXUS_LOGFILE_PATH ]]; then
 
     # Prepare Prometheus metric text for max. heap size.
-    max_heap_metric="# HELP sonatype_nexus_recommended_maximum_jvm_heap_megabytes"
-    max_heap_metric+=" Recommendation for the JVM heap size in MB read from nexus.log.\n"
-    max_heap_metric+="# TYPE sonatype_nexus_recommended_maximum_jvm_heap_megabytes gauge\n"
-    max_heap_metric+="sonatype_nexus_recommended_maximum_jvm_heap_megabytes"
+    prom="# HELP sonatype_nexus_recommended_maximum_jvm_heap_megabytes"
+    prom+=" Recommendation for the JVM heap size in MB read from nexus.log.\n"
+    prom+="# TYPE sonatype_nexus_recommended_maximum_jvm_heap_megabytes gauge\n"
+    prom+="sonatype_nexus_recommended_maximum_jvm_heap_megabytes _MAXHEAP_MB_\n"
 
     # Prepare Prometheus metric text for direct memory size.
-    max_direct_metric="# HELP sonatype_nexus_recommended_maximum_direct_memory_megabytes"
-    max_direct_metric+=" Recommendation for the maximum direct memory size in MB read from nexus.log.\n"
-    max_direct_metric+="# TYPE sonatype_nexus_recommended_maximum_direct_memory_megabytes gauge\n"
-    max_direct_metric+="sonatype_nexus_recommended_maximum_direct_memory_megabytes"
-
-    # Make the newlines effective in awk. Without this, awk prints them as literal '\n'.
-    # The format '%b' really prints the newline ('%s' would print the literal '\n').
-    max_heap_metric=$(printf "%b" "$max_heap_metric")
-    max_direct_metric=$(printf "%b" "$max_direct_metric")
+    prom+="# HELP sonatype_nexus_recommended_maximum_direct_memory_megabytes"
+    prom+=" Recommendation for the maximum direct memory size in MB read from nexus.log.\n"
+    prom+="# TYPE sonatype_nexus_recommended_maximum_direct_memory_megabytes gauge\n"
+    prom+="sonatype_nexus_recommended_maximum_direct_memory_megabytes _DIRECTMEMORY_MB_\n"
 
     # The lines of interest can be found by the following pattern. It is printed from the OAbstractProfiler. This class
     # is part of the OrientDB code, not the Nexus code.
@@ -220,28 +217,19 @@ function nexus_log_orientdb_profiler_output_to_prom() {
     last_matching_line=$(tac "$NXRMSCR_NEXUS_LOGFILE_PATH" | grep -m 1 -E "$pattern" || true)
     if [[ -n "$last_matching_line" ]]; then
 
-      # This is a version using -v to define awk-vars. But it doesn't run on MacOS. It is moaning:
-      #   awk: newline in string # HELP recommended_m... at source line 1
-      #
-      #tac -s "$pattern" -r "$NXRMSCR_NEXUS_LOGFILE_PATH" | head -n 1 |
-      #  awk -v max_heap_metric="$max_heap_metric" -v max_direct_metric="$max_direct_metric" \
-      #    '{printf "%s %d\n%s %d\n", max_heap_metric, $1, max_direct_metric, $5; }'>>"${PROM_FILE}.$$"
-
-      # This is a portable version.
-      # The delete ARGV is to prevent awk treating the ARGs as argument-filenames.
-      # A matching line ends with the following sentence:
-      #   Index:                                                    -4  -3        -2 -1      0
-      #   Log-text:   ... To improve performance set maxHeap to 2652MB and DISKCACHE to 3036MB
       # awk can print fields counting from right to left using the awk-variable NF (number of fields in current row).
       # To get the '3036MB' the $NF is used, and to get the '2652MB' the $(NF-4) is used. Both are printed as int
       # to strip off the 'MB'.
-      echo "$last_matching_line" |
-        awk 'BEGIN {max_heap_metric=ARGV[1]; max_direct_metric=ARGV[2]; delete ARGV[1]; delete ARGV[2]}
-          {printf "%s %d\n%s %d\n", max_heap_metric, $(NF-4), max_direct_metric, $NF }' \
-          "$max_heap_metric" "$max_direct_metric" >>"${PROM_FILE}.$$"
+      maxheap=$(echo "$last_matching_line" | awk '{printf "%d", $(NF-4)}')
+      directmemory=$(echo "$last_matching_line" | awk '{printf "%d", $NF}')
+      prom=${prom/_MAXHEAP_MB_/$maxheap}
+      prom=${prom/_DIRECTMEMORY_MB_/$directmemory}
+      printf "%b" "$prom" >>"${PROM_FILE}.$$"
     else
       # Set recommended values to 0 signalling the log-scrape is alive but no profiler-recommendations has been found.
-      printf "%b 0\n%b 0\n" "$max_heap_metric" "$max_direct_metric" >>"${PROM_FILE}.$$"
+      prom=${prom/_MAXHEAP_MB_/0}
+      prom=${prom/_DIRECTMEMORY_MB_/0}
+      printf "%b" "$prom" >>"${PROM_FILE}.$$"
     fi
     # Without logfile no recommendations are written to signal the absent logfile.
   fi

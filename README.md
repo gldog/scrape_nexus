@@ -302,7 +302,7 @@ nexus-scraper.service:
     Environment=NXRMSCR_NEXUS_BASE_URL=https://localhost
     Environment=NXRMSCR_NEXUS_LOGFILE_PATH=/opt/nexus/sonatype-work/nexus3/log/nexus.log
     Environment=NXRMSCR_NEXUS_TMP_PATH=/opt/nexus/sonatype-work/nexus3/tmp
-    Environment=NXRMSCR_PROM_FILES_DIR=/tmp/node_exporter_collector_textfiles
+    Environment=NXRMSCR_PROM_FILES_DIR=/tmp/node_exporter_collector_textfile_directory
     Environment=NXRMSCR_DIRECTORY_SIZES_OF=/opt/nexus/sonatype-work/nexus3/{blobs,cache,db,elasticsearch,log,orient,task_export_databases_for_backup,tmp}
     ExecStart=/opt/cdtools/scrape_nexus.sh start
     ExecStop=/opt/cdtools/scrape_nexus.sh stop
