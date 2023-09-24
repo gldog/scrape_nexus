@@ -28,6 +28,7 @@ This script
 * measures sizes of directories, converts them to PROM-data, and append them to the PROM file.
 
 # Parameters
+Paramters are given by environment variables.
 
 ## `NXRMSCR_NEXUS_BASE_URL`
 
@@ -219,7 +220,7 @@ E.g. `/tmp/nodeexporter_collector_textfile_directory`
 
 # Start, Stop, Logging
 
-The scirpt makes itself a daemon:
+The script makes itself a daemon:
 
     scrape_nexus.sh start
 
